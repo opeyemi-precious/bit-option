@@ -310,3 +310,67 @@
     )
   )
 )
+
+;; Expire Option - Process expired options and return collateral
+(define-public (expire-option (option-id uint))
+  (let ((option (unwrap! (map-get? options option-id) ERR_OPTION_NOT_FOUND)))
+    ;; Validate expiry conditions
+    (asserts! (> stacks-block-height (get expiry option)) ERR_OPTION_NOT_EXPIRED)
+    (asserts! (is-eq (get status option) "ACTIVE") ERR_OPTION_NOT_EXERCISABLE)
+    ;; Return collateral to option creator
+    (try! (update-user-balance (get creator option) (get collateral option) false))
+    ;; Mark option as expired
+    (map-set options option-id (merge option { status: "EXPIRED" }))
+    (ok true)
+  )
+)
+
+;; READ-ONLY FUNCTIONS
+
+;; Get Option Details
+(define-read-only (get-option (option-id uint))
+  (map-get? options option-id)
+)
+
+;; Get User Balance Information
+(define-read-only (get-user-balance (user principal))
+  (default-to {
+    sbtc-balance: u0,
+    locked-collateral: u0,
+  }
+    (map-get? user-balances user)
+  )
+)
+
+;; Get Platform Fee
+(define-read-only (get-platform-fee)
+  (var-get platform-fee)
+)
+
+;; ADMINISTRATIVE FUNCTIONS
+
+;; Set Platform Fee - Configure protocol revenue
+(define-public (set-platform-fee (new-fee uint))
+  (begin
+    (asserts! (is-contract-owner) ERR_NOT_AUTHORIZED)
+    (asserts! (<= new-fee MAX_FEE_BASIS_POINTS) ERR_INVALID_PARAMETER)
+    (var-set platform-fee new-fee)
+    (ok true)
+  )
+)
+
+;; Set Minimum Collateral Ratio - Risk management parameter
+(define-public (set-min-collateral-ratio (new-ratio uint))
+  (begin
+    (asserts! (is-contract-owner) ERR_NOT_AUTHORIZED)
+    (asserts!
+      (and
+        (>= new-ratio u100)
+        (<= new-ratio MAX_COLLATERAL_RATIO)
+      )
+      ERR_INVALID_PARAMETER
+    )
+    (var-set min-collateral-ratio new-ratio)
+    (ok true)
+  )
+)
